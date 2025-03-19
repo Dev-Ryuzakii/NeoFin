@@ -10,6 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, LockKeyhole } from "lucide-react";
+import { z } from "zod";
+
+const loginSchema = insertUserSchema.pick({ 
+  username: true, 
+  password: true 
+});
+
+type LoginData = z.infer<typeof loginSchema>;
+type RegisterData = z.infer<typeof insertUserSchema>;
 
 export default function AuthPage() {
   const [, setLocation] = useLocation();
@@ -21,12 +30,21 @@ export default function AuthPage() {
     }
   }, [user, setLocation]);
 
-  const loginForm = useForm({
-    resolver: zodResolver(insertUserSchema.pick({ username: true, password: true })),
+  const loginForm = useForm<LoginData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
   });
 
-  const registerForm = useForm({
+  const registerForm = useForm<RegisterData>({
     resolver: zodResolver(insertUserSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      fullName: "",
+    },
   });
 
   return (

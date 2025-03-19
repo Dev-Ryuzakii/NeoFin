@@ -16,14 +16,18 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
-const transferSchema = insertTransactionSchema
-  .pick({
-    toUserId: true,
-    amount: true,
-  })
-  .extend({
-    amount: z.string().transform((val) => parseFloat(val)),
-  });
+const transferSchema = z.object({
+  toUserId: z.string().transform((val) => parseInt(val, 10)),
+  amount: z.string().transform((val) => parseFloat(val)),
+}).superRefine((data, ctx) => {
+  if (data.amount <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Amount must be greater than 0",
+      path: ["amount"],
+    });
+  }
+});
 
 type TransferFormData = z.infer<typeof transferSchema>;
 
@@ -32,8 +36,8 @@ export default function TransferForm() {
   const form = useForm<TransferFormData>({
     resolver: zodResolver(transferSchema),
     defaultValues: {
-      toUserId: undefined,
-      amount: undefined,
+      toUserId: "",
+      amount: "",
     },
   });
 
@@ -44,6 +48,7 @@ export default function TransferForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] }); // Refresh user balance
       form.reset();
       toast({
         title: "Transfer successful",
@@ -72,7 +77,7 @@ export default function TransferForm() {
             <FormItem>
               <FormLabel>Recipient ID</FormLabel>
               <FormControl>
-                <Input type="number" placeholder="Enter recipient ID" {...field} />
+                <Input placeholder="Enter recipient ID" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -86,9 +91,6 @@ export default function TransferForm() {
               <FormLabel>Amount ($)</FormLabel>
               <FormControl>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
                   placeholder="Enter amount"
                   {...field}
                 />
