@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,29 +22,53 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { insertKycDocumentSchema } from "@shared/schema";
+import { z } from "zod";
+
+// Extend the schema to handle file upload
+const kycFormSchema = insertKycDocumentSchema.omit({ documentImage: true }).extend({
+  documentImage: z.instanceof(FileList).transform(files => files.item(0))
+    .refine(file => file !== null, "Document image is required")
+    .refine(
+      file => file && ["image/jpeg", "image/png", "image/jpg"].includes(file.type),
+      "Only JPEG and PNG files are allowed"
+    )
+    .refine(
+      file => file && file.size <= 5 * 1024 * 1024,
+      "File size must be less than 5MB"
+    ),
+});
+
+type KycFormData = z.infer<typeof kycFormSchema>;
 
 export default function KycVerificationForm() {
   const { toast } = useToast();
-  const form = useForm({
-    resolver: zodResolver(insertKycDocumentSchema),
+  const form = useForm<KycFormData>({
+    resolver: zodResolver(kycFormSchema),
     defaultValues: {
-      documentType: "",
+      documentType: undefined,
       documentNumber: "",
-      documentImage: "",
+      documentImage: undefined,
     },
   });
 
   const kycMutation = useMutation({
-    mutationFn: async (data: FormData) => {
+    mutationFn: async (data: KycFormData) => {
+      const formData = new FormData();
+      formData.append("documentType", data.documentType);
+      formData.append("documentNumber", data.documentNumber);
+      formData.append("documentImage", data.documentImage);
+
       const res = await fetch("/api/kyc/submit", {
         method: "POST",
-        body: data,
+        body: formData,
         credentials: "include",
       });
+
       if (!res.ok) {
-        const error = await res.text();
-        throw new Error(error);
+        const error = await res.json();
+        throw new Error(error.message || "Failed to submit KYC documents");
       }
+
       return res.json();
     },
     onSuccess: () => {
@@ -64,17 +88,9 @@ export default function KycVerificationForm() {
     },
   });
 
-  const handleSubmit = (data: any) => {
-    const formData = new FormData();
-    formData.append("documentType", data.documentType);
-    formData.append("documentNumber", data.documentNumber);
-    formData.append("documentImage", data.documentImage[0]);
-    kycMutation.mutate(formData);
-  };
-
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(data => kycMutation.mutate(data))} className="space-y-4">
         <FormField
           control={form.control}
           name="documentType"
@@ -118,19 +134,24 @@ export default function KycVerificationForm() {
         <FormField
           control={form.control}
           name="documentImage"
-          render={({ field: { value, onChange, ...field } }) => (
+          render={({ field: { onChange, value, ...field } }) => (
             <FormItem>
               <FormLabel>Document Image</FormLabel>
               <FormControl>
                 <Input
                   type="file"
-                  accept="image/*"
-                  onChange={(e) => onChange(e.target.files)}
+                  accept="image/jpeg,image/png,image/jpg"
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files?.length) {
+                      onChange(files);
+                    }
+                  }}
                   {...field}
                 />
               </FormControl>
               <FormDescription>
-                Upload a clear photo or scan of your document
+                Upload a clear photo or scan of your document (JPEG or PNG, max 5MB)
               </FormDescription>
               <FormMessage />
             </FormItem>

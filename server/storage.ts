@@ -1,6 +1,7 @@
-import { User, InsertUser, Transaction, KycDocument, InsertKycDocument, BillPayment, AirtimePurchase, InsertBillPayment, InsertAirtimePurchase } from "@shared/schema";
+import { User, InsertUser, Transaction, KycDocument, InsertKycDocument, BillPayment, AirtimePurchase, InsertBillPayment, InsertAirtimePurchase, VirtualCard, ExternalTransfer, ExternalBank } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { AccountService } from "./services/account";
 
 const MemoryStore = createMemoryStore(session);
 
@@ -10,7 +11,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserBalance(userId: number, amount: number): Promise<User>;
-  updateUserKycStatus(userId: number, verified: boolean): Promise<User>;
+  updateUser(userId: number, updates: Partial<User>): Promise<User>;
 
   // Transaction operations
   createTransaction(transaction: Partial<Transaction>): Promise<Transaction>;
@@ -23,6 +24,17 @@ export interface IStorage {
   getKycDocuments(userId: number): Promise<KycDocument[]>;
   getAllPendingKycDocuments(): Promise<KycDocument[]>;
   updateKycDocument(id: number, status: string, reason?: string): Promise<KycDocument>;
+
+  // Virtual Card operations
+  createVirtualCard(card: Partial<VirtualCard>): Promise<VirtualCard>;
+  getVirtualCards(userId: number): Promise<VirtualCard[]>;
+  updateVirtualCardStatus(id: number, status: string): Promise<VirtualCard>;
+
+  // External Transfer operations
+  createExternalTransfer(transfer: Partial<ExternalTransfer>): Promise<ExternalTransfer>;
+  getExternalTransfers(userId: number): Promise<ExternalTransfer[]>;
+  updateExternalTransferStatus(id: number, status: string): Promise<ExternalTransfer>;
+  getSupportedBanks(): Promise<ExternalBank[]>;
 
   // Bill Payment operations
   createBillPayment(payment: InsertBillPayment & { userId: number }): Promise<BillPayment>;
@@ -41,12 +53,16 @@ export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private transactions: Map<number, Transaction>;
   private kycDocuments: Map<number, KycDocument>;
+  private virtualCards: Map<number, VirtualCard>;
+  private externalTransfers: Map<number, ExternalTransfer>;
   private billPayments: Map<number, BillPayment>;
   private airtimePurchases: Map<number, AirtimePurchase>;
 
   currentId: number;
   currentTransactionId: number;
   currentKycDocumentId: number;
+  currentVirtualCardId: number;
+  currentExternalTransferId: number;
   currentBillPaymentId: number;
   currentAirtimePurchaseId: number;
   sessionStore: session.Store;
@@ -55,12 +71,16 @@ export class MemStorage implements IStorage {
     this.users = new Map();
     this.transactions = new Map();
     this.kycDocuments = new Map();
+    this.virtualCards = new Map();
+    this.externalTransfers = new Map();
     this.billPayments = new Map();
     this.airtimePurchases = new Map();
 
     this.currentId = 1;
     this.currentTransactionId = 1;
     this.currentKycDocumentId = 1;
+    this.currentVirtualCardId = 1;
+    this.currentExternalTransferId = 1;
     this.currentBillPaymentId = 1;
     this.currentAirtimePurchaseId = 1;
 
@@ -81,15 +101,29 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentId++;
+    const accountNumber = await AccountService.assignAccountNumber({ id } as User);
+
     const user: User = {
-      ...insertUser,
       id,
+      ...insertUser,
       role: "user",
       balance: "1000",
       kycVerified: false,
+      email: insertUser.email || null,
+      phone: insertUser.phone || null,
+      accountNumber,
     };
     this.users.set(id, user);
     return user;
+  }
+
+  async updateUser(userId: number, updates: Partial<User>): Promise<User> {
+    const user = await this.getUser(userId);
+    if (!user) throw new Error("User not found");
+
+    const updatedUser = { ...user, ...updates };
+    this.users.set(userId, updatedUser);
+    return updatedUser;
   }
 
   async updateUserBalance(userId: number, amount: number): Promise<User> {
@@ -104,13 +138,58 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
 
-  async updateUserKycStatus(userId: number, verified: boolean): Promise<User> {
-    const user = await this.getUser(userId);
-    if (!user) throw new Error("User not found");
+  async createKycDocument(document: InsertKycDocument & { userId: number }): Promise<KycDocument> {
+    const id = this.currentKycDocumentId++;
+    const newDocument: KycDocument = {
+      id,
+      ...document,
+      status: "pending",
+      rejectionReason: null,
+      createdAt: new Date(),
+      updatedAt: null,
+    };
 
-    const updatedUser = { ...user, kycVerified: verified };
-    this.users.set(userId, updatedUser);
-    return updatedUser;
+    this.kycDocuments.set(id, newDocument);
+
+    // Update user's KYC status
+    await this.updateUser(document.userId, { kycVerified: true });
+
+    return newDocument;
+  }
+
+  async getKycDocuments(userId: number): Promise<KycDocument[]> {
+    return Array.from(this.kycDocuments.values()).filter(
+      (doc) => doc.userId === userId
+    );
+  }
+
+  async getAllPendingKycDocuments(): Promise<KycDocument[]> {
+    return Array.from(this.kycDocuments.values()).filter(
+      (doc) => doc.status === "pending"
+    );
+  }
+
+  async updateKycDocument(id: number, status: string, reason?: string): Promise<KycDocument> {
+    const document = this.kycDocuments.get(id);
+    if (!document) throw new Error("Document not found");
+
+    const updatedDocument: KycDocument = {
+      ...document,
+      status,
+      rejectionReason: reason || null,
+      updatedAt: new Date(),
+    };
+
+    this.kycDocuments.set(id, updatedDocument);
+
+    // Update user's KYC status based on document status
+    if (document.userId) {
+      await this.updateUser(document.userId, { 
+        kycVerified: status === "approved" 
+      });
+    }
+
+    return updatedDocument;
   }
 
   async createTransaction(transaction: Partial<Transaction>): Promise<Transaction> {
@@ -134,54 +213,78 @@ export class MemStorage implements IStorage {
   async getAllTransactions(): Promise<Transaction[]> {
     return Array.from(this.transactions.values());
   }
+  async updateTransactionStatus(id: number, status: string): Promise<Transaction> {
+    const transaction = this.transactions.get(id);
+    if (!transaction) throw new Error("Transaction not found");
 
-  async createKycDocument(document: InsertKycDocument & { userId: number }): Promise<KycDocument> {
-    const id = this.currentKycDocumentId++;
-    const newDocument: KycDocument = {
+    const updatedTransaction = { ...transaction, status };
+    this.transactions.set(id, updatedTransaction);
+    return updatedTransaction;
+  }
+
+  async createVirtualCard(card: Partial<VirtualCard>): Promise<VirtualCard> {
+    const id = this.currentVirtualCardId++;
+    const newCard: VirtualCard = {
       id,
-      ...document,
-      status: "pending",
+      ...card,
       createdAt: new Date(),
-      updatedAt: new Date(),
-    } as KycDocument;
+    } as VirtualCard;
 
-    this.kycDocuments.set(id, newDocument);
-    return newDocument;
+    this.virtualCards.set(id, newCard);
+    return newCard;
   }
 
-  async getKycDocuments(userId: number): Promise<KycDocument[]> {
-    return Array.from(this.kycDocuments.values()).filter(
-      (doc) => doc.userId === userId
+  async getVirtualCards(userId: number): Promise<VirtualCard[]> {
+    return Array.from(this.virtualCards.values()).filter(
+      (card) => card.userId === userId
     );
   }
 
-  async getAllPendingKycDocuments(): Promise<KycDocument[]> {
-    return Array.from(this.kycDocuments.values()).filter(
-      (doc) => doc.status === "pending"
+  async updateVirtualCardStatus(id: number, status: string): Promise<VirtualCard> {
+    const card = this.virtualCards.get(id);
+    if (!card) throw new Error("Virtual card not found");
+
+    const updatedCard = { ...card, status };
+    this.virtualCards.set(id, updatedCard);
+    return updatedCard;
+  }
+
+  async createExternalTransfer(transfer: Partial<ExternalTransfer>): Promise<ExternalTransfer> {
+    const id = this.currentExternalTransferId++;
+    const newTransfer: ExternalTransfer = {
+      id,
+      ...transfer,
+      createdAt: new Date(),
+    } as ExternalTransfer;
+
+    this.externalTransfers.set(id, newTransfer);
+    return newTransfer;
+  }
+
+  async getExternalTransfers(userId: number): Promise<ExternalTransfer[]> {
+    return Array.from(this.externalTransfers.values()).filter(
+      (transfer) => transfer.userId === userId
     );
   }
 
-  async updateKycDocument(id: number, status: string, reason?: string): Promise<KycDocument> {
-    const document = this.kycDocuments.get(id);
-    if (!document) throw new Error("Document not found");
+  async updateExternalTransferStatus(id: number, status: string): Promise<ExternalTransfer> {
+    const transfer = this.externalTransfers.get(id);
+    if (!transfer) throw new Error("External transfer not found");
 
-    const updatedDocument = {
-      ...document,
-      status,
-      rejectionReason: reason,
-      updatedAt: new Date(),
-    };
-
-    this.kycDocuments.set(id, updatedDocument);
-
-    if (status === "approved") {
-      await this.updateUserKycStatus(document.userId, true);
-    }
-
-    return updatedDocument;
+    const updatedTransfer = { ...transfer, status };
+    this.externalTransfers.set(id, updatedTransfer);
+    return updatedTransfer;
   }
 
-  // New methods for bill payments
+  async getSupportedBanks(): Promise<ExternalBank[]> {
+    return [
+      { id: 1, bankName: 'GTBank', bankCode: '058', createdAt: new Date() },
+      { id: 2, bankName: 'OPay', bankCode: '100', createdAt: new Date() },
+      { id: 3, bankName: 'Kuda Bank', bankCode: '090267', createdAt: new Date() },
+      { id: 4, bankName: 'Palmpay', bankCode: '100033', createdAt: new Date() },
+    ];
+  }
+
   async createBillPayment(payment: InsertBillPayment & { userId: number }): Promise<BillPayment> {
     const id = this.currentBillPaymentId++;
     const newPayment: BillPayment = {
@@ -210,7 +313,6 @@ export class MemStorage implements IStorage {
     return updatedPayment;
   }
 
-  // New methods for airtime purchases
   async createAirtimePurchase(purchase: InsertAirtimePurchase & { userId: number }): Promise<AirtimePurchase> {
     const id = this.currentAirtimePurchaseId++;
     const newPurchase: AirtimePurchase = {
@@ -237,15 +339,6 @@ export class MemStorage implements IStorage {
     const updatedPurchase = { ...purchase, status };
     this.airtimePurchases.set(id, updatedPurchase);
     return updatedPurchase;
-  }
-
-    async updateTransactionStatus(id: number, status: string): Promise<Transaction> {
-    const transaction = this.transactions.get(id);
-    if (!transaction) throw new Error("Transaction not found");
-
-    const updatedTransaction = { ...transaction, status };
-    this.transactions.set(id, updatedTransaction);
-    return updatedTransaction;
   }
 }
 

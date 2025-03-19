@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   kycVerified: boolean("kyc_verified").notNull().default(false),
   email: text("email"),
   phone: text("phone"),
+  accountNumber: text("account_number").unique(), // Added for bank account numbers
 });
 
 export const kycDocuments = pgTable("kyc_documents", {
@@ -19,11 +20,41 @@ export const kycDocuments = pgTable("kyc_documents", {
   userId: integer("user_id").references(() => users.id),
   documentType: text("document_type").notNull(), // passport, driver_license, national_id
   documentNumber: text("document_number").notNull(),
-  documentImage: text("document_image").notNull(), // URL to stored image
+  documentImage: text("document_image").notNull(), // Base64 encoded image
   status: text("status").notNull().default("pending"), // pending, approved, rejected
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at"),
+});
+
+export const virtualCards = pgTable("virtual_cards", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  cardNumber: text("card_number").notNull().unique(),
+  expiryMonth: text("expiry_month").notNull(),
+  expiryYear: text("expiry_year").notNull(),
+  cvv: text("cvv").notNull(),
+  status: text("status").notNull().default("active"), // active, blocked, expired
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const externalBanks = pgTable("external_banks", {
+  id: serial("id").primaryKey(),
+  bankName: text("bank_name").notNull(), // GTBank, OPay, etc.
+  bankCode: text("bank_code").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const externalTransfers = pgTable("external_transfers", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  bankId: integer("bank_id").references(() => externalBanks.id),
+  recipientName: text("recipient_name").notNull(),
+  recipientAccount: text("recipient_account").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull(), // pending, completed, failed
+  reference: text("reference").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const transactions = pgTable("transactions", {
@@ -31,7 +62,7 @@ export const transactions = pgTable("transactions", {
   fromUserId: integer("from_user_id").references(() => users.id),
   toUserId: integer("to_user_id").references(() => users.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  type: text("type").notNull(), // transfer, bill_payment, airtime, deposit, withdrawal
+  type: text("type").notNull(), // transfer, bill_payment, airtime, deposit, withdrawal, external_transfer
   status: text("status").notNull(), // pending, completed, failed
   reference: text("reference"), // payment reference for Paystack
   metadata: text("metadata"), // JSON string for additional transaction data
@@ -61,7 +92,7 @@ export const airtimePurchases = pgTable("airtime_purchases", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Create insert schemas
+// Create insert schemas with proper validation
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -70,11 +101,32 @@ export const insertUserSchema = createInsertSchema(users).pick({
   phone: true,
 });
 
-export const insertKycDocumentSchema = createInsertSchema(kycDocuments).pick({
-  documentType: true,
-  documentNumber: true,
-  documentImage: true,
+export const insertKycDocumentSchema = createInsertSchema(kycDocuments)
+  .pick({
+    documentType: true,
+    documentNumber: true,
+    documentImage: true,
+  })
+  .extend({
+    documentType: z.enum(["passport", "driver_license", "national_id"]),
+    documentNumber: z.string().min(1, "Document number is required"),
+    documentImage: z.string().min(1, "Document image is required"),
+  });
+
+export const insertVirtualCardSchema = createInsertSchema(virtualCards).pick({
+  userId: true,
 });
+
+export const insertExternalTransferSchema = createInsertSchema(externalTransfers)
+  .pick({
+    bankId: true,
+    recipientName: true,
+    recipientAccount: true,
+    amount: true,
+  })
+  .extend({
+    amount: z.number().positive("Amount must be greater than 0"),
+  });
 
 export const insertBillPaymentSchema = createInsertSchema(billPayments).pick({
   billType: true,
@@ -92,15 +144,21 @@ export const insertAirtimePurchaseSchema = createInsertSchema(airtimePurchases).
 // Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertKycDocument = z.infer<typeof insertKycDocumentSchema>;
+export type InsertVirtualCard = z.infer<typeof insertVirtualCardSchema>;
+export type InsertExternalTransfer = z.infer<typeof insertExternalTransferSchema>;
 export type InsertBillPayment = z.infer<typeof insertBillPaymentSchema>;
 export type InsertAirtimePurchase = z.infer<typeof insertAirtimePurchaseSchema>;
+
 export type User = typeof users.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type KycDocument = typeof kycDocuments.$inferSelect;
+export type VirtualCard = typeof virtualCards.$inferSelect;
+export type ExternalBank = typeof externalBanks.$inferSelect;
+export type ExternalTransfer = typeof externalTransfers.$inferSelect;
 export type BillPayment = typeof billPayments.$inferSelect;
 export type AirtimePurchase = typeof airtimePurchases.$inferSelect;
 
-// Add notification types to schema.ts
+// Add notification types
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),

@@ -11,11 +11,10 @@ import { insertBillPaymentSchema, insertAirtimePurchaseSchema } from "@shared/sc
 import { FraudDetectionService } from './services/fraud-detection';
 import { FinancialInsightsService } from './services/financial-insights';
 import { getWebSocketService } from './services/websocket';
-
-const transferSchema = z.object({
-  toUserId: z.number(),
-  amount: z.number().positive(),
-});
+import { insertKycDocumentSchema } from "@shared/schema";
+import { VirtualCardService } from './services/virtual-card';
+import { ExternalTransferService } from './services/external-transfer';
+import { insertExternalTransferSchema } from "@shared/schema";
 
 // Configure multer for file upload
 const upload = multer({
@@ -33,6 +32,11 @@ const upload = multer({
   },
 });
 
+const transferSchema = z.object({
+  toUserId: z.number(),
+  amount: z.number().positive(),
+});
+
 export async function registerRoutes(app: Express, server: Server): Promise<void> {
   console.log("Registering routes...");
   setupAuth(app);
@@ -40,7 +44,7 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
   // Add health check endpoint
   app.get("/health", (req, res) => {
     console.log("Health check requested");
-    res.status(200).json({ 
+    res.status(200).json({
       status: "OK",
       time: new Date().toISOString(),
       services: {
@@ -135,24 +139,43 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
     }
   });
 
-  // KYC Routes
+  // KYC Routes - Updated to handle file upload properly
   app.post("/api/kyc/submit", upload.single("documentImage"), async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
     try {
       console.log(`Processing KYC submission for user ${req.user.id}`);
-      const kycDoc = await storage.createKycDocument({
+
+      // Validate document data
+      const documentData = insertKycDocumentSchema.parse({
         userId: req.user.id,
         documentType: req.body.documentType,
         documentNumber: req.body.documentNumber,
-        documentImage: req.file.buffer.toString("base64"), // Store as base64 for demo
+        documentImage: req.file.buffer.toString("base64"), // Store as base64
       });
 
-      res.json(kycDoc);
+      const kycDoc = await storage.createKycDocument(documentData);
+
+      // Update user's KYC status
+      await storage.updateUser(req.user.id, { kycVerified: true });
+
+      // Send notification about KYC submission
+      const ws = getWebSocketService();
+      ws.sendNotification(req.user.id, {
+        type: 'kyc_update',
+        title: 'KYC Document Submitted',
+        message: 'Your KYC document has been submitted successfully and is under review.',
+      });
+
+      res.json({ message: "KYC document submitted successfully", status: "pending" });
     } catch (error) {
       console.error("KYC submission error:", error);
-      res.status(500).json({ message: "Failed to submit KYC documents" });
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid document data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to submit KYC documents" });
+      }
     }
   });
 
@@ -355,6 +378,123 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
       res.status(500).json({ message: "Failed to fetch financial insights" });
     }
   });
+
+  // Virtual Card Routes
+  app.post("/api/virtual-cards", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.user.kycVerified) return res.status(403).json({ message: "KYC verification required" });
+
+    try {
+      console.log(`Creating virtual card for user ${req.user.id}`);
+
+      // Create virtual card
+      const virtualCard = await VirtualCardService.createVirtualCard(req.user);
+      const savedCard = await storage.createVirtualCard(virtualCard);
+
+      res.json({
+        cardNumber: VirtualCardService.maskCardNumber(savedCard.cardNumber),
+        expiryMonth: savedCard.expiryMonth,
+        expiryYear: savedCard.expiryYear,
+        cvv: '***',
+        status: savedCard.status,
+      });
+    } catch (error) {
+      console.error("Virtual card creation error:", error);
+      res.status(500).json({ message: "Failed to create virtual card" });
+    }
+  });
+
+  app.get("/api/virtual-cards", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      console.log(`Fetching virtual cards for user ${req.user.id}`);
+      const cards = await storage.getVirtualCards(req.user.id);
+      res.json(cards.map(card => ({
+        ...card,
+        cardNumber: VirtualCardService.maskCardNumber(card.cardNumber),
+        cvv: '***',
+      })));
+    } catch (error) {
+      console.error("Virtual cards fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch virtual cards" });
+    }
+  });
+
+  // External Bank Transfer Routes
+  app.get("/api/banks", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      console.log("Fetching supported banks");
+      const banks = await storage.getSupportedBanks();
+      res.json(banks);
+    } catch (error) {
+      console.error("Banks fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch banks" });
+    }
+  });
+
+  app.post("/api/external-transfer", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.user.kycVerified) return res.status(403).json({ message: "KYC verification required" });
+
+    try {
+      console.log(`Processing external transfer for user ${req.user.id}`);
+      const transferData = insertExternalTransferSchema.parse(req.body);
+
+      // Initialize transfer
+      const transfer = await ExternalTransferService.initiateTransfer(
+        req.user,
+        transferData.bankId,
+        transferData.recipientAccount,
+        transferData.recipientName,
+        parseFloat(transferData.amount.toString())
+      );
+
+      // Create transfer record
+      const savedTransfer = await storage.createExternalTransfer(transfer);
+
+      // Create associated transaction
+      const transaction = await storage.createTransaction({
+        fromUserId: req.user.id,
+        amount: transferData.amount.toString(),
+        type: "external_transfer",
+        status: "pending",
+        reference: transfer.reference,
+        metadata: JSON.stringify(savedTransfer),
+      });
+
+      // Update user balance
+      await storage.updateUserBalance(req.user.id, -parseFloat(transferData.amount.toString()));
+
+      res.json({
+        transfer: savedTransfer,
+        transaction,
+      });
+    } catch (error) {
+      console.error("External transfer error:", error);
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid transfer data" });
+      } else {
+        res.status(500).json({ message: "Failed to process external transfer" });
+      }
+    }
+  });
+
+  app.get("/api/external-transfers", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      console.log(`Fetching external transfers for user ${req.user.id}`);
+      const transfers = await storage.getExternalTransfers(req.user.id);
+      res.json(transfers);
+    } catch (error) {
+      console.error("External transfers fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch external transfers" });
+    }
+  });
+
 
   console.log("All routes registered successfully");
 }
