@@ -8,6 +8,9 @@ import { ZodError } from "zod";
 import multer from "multer";
 import path from "path";
 import { insertBillPaymentSchema, insertAirtimePurchaseSchema } from "@shared/schema";
+import { FraudDetectionService } from './services/fraud-detection';
+import { FinancialInsightsService } from './services/financial-insights';
+import { initializeWebSocket, getWebSocketService } from './services/websocket';
 
 const transferSchema = z.object({
   toUserId: z.number(),
@@ -31,12 +34,28 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  console.log("Initializing routes and services...");
   setupAuth(app);
+
+  // Add health check endpoint
+  app.get("/health", (req, res) => {
+    console.log("Health check requested");
+    res.status(200).json({ 
+      status: "OK",
+      time: new Date().toISOString(),
+      services: {
+        websocket: getWebSocketService() ? "running" : "not initialized",
+        auth: "running",
+        storage: "running"
+      }
+    });
+  });
 
   app.get("/api/transactions", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
+      console.log(`Fetching transactions for user ${req.user.id}`);
       const transactions = req.user.role === "admin"
         ? await storage.getAllTransactions()
         : await storage.getTransactions(req.user.id);
@@ -51,6 +70,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
+      console.log(`Processing transfer request from user ${req.user.id}`);
       const { toUserId, amount } = transferSchema.parse(req.body);
 
       const toUser = await storage.getUser(toUserId);
@@ -74,6 +94,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "completed"
       });
 
+      console.log(`Running fraud detection for transaction ${transaction.id}`);
+      // Perform fraud detection
+      const fraudCheck = await FraudDetectionService.analyzeTansaction(transaction, req.user);
+      if (fraudCheck.isSuspicious) {
+        console.log(`Suspicious activity detected for transaction ${transaction.id}`);
+        // Still allow transaction but notify user and admins
+        const ws = getWebSocketService();
+        ws.sendNotification(req.user.id, {
+          type: 'fraud_alert',
+          title: 'Suspicious Transaction Detected',
+          message: `Your recent transfer of ${amount} NGN has triggered our fraud detection system.`,
+        });
+      }
+
+      // Send transaction notification to recipient
+      console.log(`Sending notification to recipient ${toUserId}`);
+      const ws = getWebSocketService();
+      ws.sendNotification(toUserId, {
+        type: 'transaction',
+        title: 'Money Received',
+        message: `You received ${amount} NGN from ${req.user.fullName}`,
+      });
+
+      // Update financial insights
+      console.log(`Updating financial insights for user ${req.user.id}`);
+      const transactions = await storage.getTransactions(req.user.id);
+      await FinancialInsightsService.analyzeTransactions(req.user, transactions);
+
       res.json(transaction);
     } catch (error) {
       console.error("Transfer error:", error);
@@ -93,6 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
     try {
+      console.log(`Processing KYC submission for user ${req.user.id}`);
       const kycDoc = await storage.createKycDocument({
         userId: req.user.id,
         documentType: req.body.documentType,
@@ -111,6 +160,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
+      console.log(`Fetching KYC status for user ${req.user.id}`);
       const documents = await storage.getKycDocuments(req.user.id);
       res.json(documents);
     } catch (error) {
@@ -126,6 +176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
+      console.log("Fetching pending KYC documents");
       const pendingDocs = await storage.getAllPendingKycDocuments();
       res.json(pendingDocs);
     } catch (error) {
@@ -140,6 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
+      console.log(`Verifying KYC document ${req.params.id}`);
       const { status, reason } = req.body;
       const document = await storage.updateKycDocument(
         parseInt(req.params.id),
@@ -159,6 +211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.user.kycVerified) return res.status(403).json({ message: "KYC verification required" });
 
     try {
+      console.log(`Processing bill payment for user ${req.user.id}`);
       const billData = insertBillPaymentSchema.parse(req.body);
 
       // Initialize payment with Paystack
@@ -207,6 +260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
+      console.log(`Processing airtime purchase for user ${req.user.id}`);
       const airtimeData = insertAirtimePurchaseSchema.parse(req.body);
 
       // Initialize payment with Paystack
@@ -250,9 +304,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-    // Payment Webhook
+  // Payment Webhook
   app.post("/api/webhook/paystack", async (req, res) => {
     try {
+      console.log("Processing Paystack webhook event");
       const event = req.body;
       const reference = event.data.reference;
 
@@ -285,6 +340,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add new route for financial insights
+  app.get("/api/insights", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      console.log(`Fetching financial insights for user ${req.user.id}`);
+      const transactions = await storage.getTransactions(req.user.id);
+      const insights = await FinancialInsightsService.analyzeTransactions(req.user, transactions);
+      const trends = FinancialInsightsService.getSpendingTrends(transactions);
+
+      res.json({ insights, trends });
+    } catch (error) {
+      console.error("Financial insights error:", error);
+      res.status(500).json({ message: "Failed to fetch financial insights" });
+    }
+  });
+
+
   const httpServer = createServer(app);
+
+  console.log("Initializing WebSocket service...");
+  initializeWebSocket(httpServer);
+
+  console.log("All routes and services initialized successfully");
   return httpServer;
 }

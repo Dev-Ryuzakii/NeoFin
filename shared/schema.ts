@@ -99,3 +99,17 @@ export type Transaction = typeof transactions.$inferSelect;
 export type KycDocument = typeof kycDocuments.$inferSelect;
 export type BillPayment = typeof billPayments.$inferSelect;
 export type AirtimePurchase = typeof airtimePurchases.$inferSelect;
+
+// Add notification types to schema.ts
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  type: text("type").notNull(), // transaction, fraud_alert, budget_alert
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;

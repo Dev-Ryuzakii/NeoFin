@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Building2, LogOut, Shield } from "lucide-react";
 import { useLocation } from "wouter";
+import NotificationCenter from "@/components/NotificationCenter"; //Import the new component
+import FinancialInsights from "@/components/FinancialInsights"; //Import the new component
 
 export default function Dashboard() {
   const { user, logoutMutation } = useAuth();
@@ -69,6 +71,7 @@ export default function Dashboard() {
         <div className="grid gap-6 md:grid-cols-[1fr_300px]">
           <div className="space-y-6">
             <AccountSummary user={user!} />
+            <NotificationCenter />
 
             <Card>
               <CardContent className="p-6">
@@ -106,7 +109,8 @@ export default function Dashboard() {
             </Card>
           </div>
 
-          <div className="hidden md:block">
+          <div className="space-y-6">
+            <FinancialInsights />
             <Card className="sticky top-6">
               <CardContent className="p-6">
                 <h3 className="font-semibold mb-4">Quick Stats</h3>
