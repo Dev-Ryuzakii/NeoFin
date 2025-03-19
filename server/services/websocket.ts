@@ -7,15 +7,19 @@ class WebSocketService {
   private clients: Map<number, WebSocket>;
 
   constructor(server: Server) {
-    this.wss = new WebSocketServer({ server });
+    console.log('Creating WebSocket server with dedicated /ws path...');
+    this.wss = new WebSocketServer({ 
+      server,
+      path: '/ws' // Dedicated path to avoid conflicts with Vite
+    });
     this.clients = new Map();
 
     this.wss.on('connection', (ws: WebSocket) => {
-      console.log('New WebSocket connection established');
+      console.log('New WebSocket connection established on /ws path');
 
       ws.on('message', (message: string) => {
         try {
-          const data = JSON.parse(message);
+          const data = JSON.parse(message.toString());
           if (data.type === 'auth' && data.userId) {
             console.log(`Client authenticated with user ID: ${data.userId}`);
             this.clients.set(data.userId, ws);
@@ -28,13 +32,12 @@ class WebSocketService {
       ws.on('close', () => {
         console.log('WebSocket connection closed');
         // Remove client on disconnect
-        for (const [userId, client] of Array.from(this.clients.entries())) {
+        Array.from(this.clients.entries()).forEach(([userId, client]) => {
           if (client === ws) {
             console.log(`Removing client for user ID: ${userId}`);
             this.clients.delete(userId);
-            break;
           }
-        }
+        });
       });
 
       ws.on('error', (error) => {
@@ -52,7 +55,10 @@ class WebSocketService {
     if (client && client.readyState === WebSocket.OPEN) {
       try {
         console.log(`Sending notification to user ${userId}:`, notification);
-        client.send(JSON.stringify(notification));
+        client.send(JSON.stringify({
+          ...notification,
+          timestamp: notification.timestamp || new Date().toISOString()
+        }));
       } catch (error) {
         console.error(`Error sending notification to user ${userId}:`, error);
       }
@@ -63,15 +69,19 @@ class WebSocketService {
 
   broadcastNotification(notification: any) {
     console.log('Broadcasting notification to all clients:', notification);
-    for (const client of this.clients.values()) {
+    // Convert Map values to array before iteration
+    Array.from(this.clients.values()).forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         try {
-          client.send(JSON.stringify(notification));
+          client.send(JSON.stringify({
+            ...notification,
+            timestamp: notification.timestamp || new Date().toISOString()
+          }));
         } catch (error) {
           console.error('Error broadcasting notification:', error);
         }
       }
-    }
+    });
   }
 }
 

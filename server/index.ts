@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { initializeWebSocket } from './services/websocket';
+import {createServer} from 'http';
 
 const app = express();
 app.use(express.json());
@@ -39,7 +41,15 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    const server = await registerRoutes(app);
+    // Create HTTP server first
+    const server = createServer(app);
+
+    // Initialize WebSocket before registering routes
+    console.log("Initializing WebSocket service...");
+    initializeWebSocket(server);
+
+    // Register routes after WebSocket is initialized
+    await registerRoutes(app, server);
 
     // Global error handler
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

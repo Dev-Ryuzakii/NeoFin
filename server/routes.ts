@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { PaystackService } from "./services/paystack";
@@ -10,7 +10,7 @@ import path from "path";
 import { insertBillPaymentSchema, insertAirtimePurchaseSchema } from "@shared/schema";
 import { FraudDetectionService } from './services/fraud-detection';
 import { FinancialInsightsService } from './services/financial-insights';
-import { initializeWebSocket, getWebSocketService } from './services/websocket';
+import { getWebSocketService } from './services/websocket';
 
 const transferSchema = z.object({
   toUserId: z.number(),
@@ -33,8 +33,8 @@ const upload = multer({
   },
 });
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  console.log("Initializing routes and services...");
+export async function registerRoutes(app: Express, server: Server): Promise<void> {
+  console.log("Registering routes...");
   setupAuth(app);
 
   // Add health check endpoint
@@ -357,12 +357,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-
-  const httpServer = createServer(app);
-
-  console.log("Initializing WebSocket service...");
-  initializeWebSocket(httpServer);
-
-  console.log("All routes and services initialized successfully");
-  return httpServer;
+  console.log("All routes registered successfully");
 }
