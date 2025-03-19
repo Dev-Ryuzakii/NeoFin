@@ -14,11 +14,22 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { z } from "zod";
 
 const transferSchema = z.object({
   toUserId: z.string().transform((val) => parseInt(val, 10)),
-  amount: z.string().transform((val) => parseFloat(val)),
+  amount: z.string().transform((val, ctx) => {
+    const amount = parseFloat(val);
+    if (isNaN(amount)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Please enter a valid number",
+      });
+      return NaN;
+    }
+    return amount;
+  }),
 }).superRefine((data, ctx) => {
   if (data.amount <= 0) {
     ctx.addIssue({
@@ -33,6 +44,7 @@ type TransferFormData = z.infer<typeof transferSchema>;
 
 export default function TransferForm() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const form = useForm<TransferFormData>({
     resolver: zodResolver(transferSchema),
     defaultValues: {
@@ -43,6 +55,11 @@ export default function TransferForm() {
 
   const transferMutation = useMutation({
     mutationFn: async (data: TransferFormData) => {
+      // Check balance before making the request
+      const currentBalance = parseFloat(user?.balance || "0");
+      if (data.amount > currentBalance) {
+        throw new Error(`Insufficient funds. Your current balance is $${currentBalance.toFixed(2)}`);
+      }
       const res = await apiRequest("POST", "/api/transfer", data);
       return res.json();
     },
@@ -100,7 +117,7 @@ export default function TransferForm() {
                 />
               </FormControl>
               <FormDescription>
-                Enter the amount you want to send. Your available balance is shown above.
+                Your available balance is ${parseFloat(user?.balance || "0").toFixed(2)}
               </FormDescription>
               <FormMessage />
             </FormItem>

@@ -2,10 +2,11 @@ import { useAuth } from "@/hooks/use-auth";
 import AccountSummary from "@/components/AccountSummary";
 import TransactionList from "@/components/TransactionList";
 import TransferForm from "@/components/TransferForm";
-import { Card, CardContent } from "@/components/ui/card";
+import KycVerificationForm from "@/components/KycVerificationForm";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Building2, LogOut } from "lucide-react";
+import { Building2, LogOut, Shield } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Dashboard() {
@@ -46,10 +47,27 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {!user?.kycVerified && (
+          <Card className="mb-6">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-orange-500 flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Verify Your Identity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                Complete your KYC verification to unlock all features and higher transaction limits.
+              </p>
+              <KycVerificationForm />
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid gap-6 md:grid-cols-[1fr_300px]">
           <div className="space-y-6">
             <AccountSummary user={user!} />
-            
+
             <Card>
               <CardContent className="p-6">
                 <Tabs defaultValue="transfer">
@@ -75,7 +93,8 @@ export default function Dashboard() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground">KYC Status</p>
-                    <p className="font-medium">
+                    <p className="font-medium flex items-center gap-2">
+                      <Shield className={`h-4 w-4 ${user?.kycVerified ? "text-green-500" : "text-orange-500"}`} />
                       {user?.kycVerified ? "Verified" : "Pending Verification"}
                     </p>
                   </div>
