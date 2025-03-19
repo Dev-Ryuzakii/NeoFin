@@ -348,9 +348,8 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
       console.log(`Fetching financial insights for user ${req.user.id}`);
       const transactions = await storage.getTransactions(req.user.id);
       const insights = await FinancialInsightsService.analyzeTransactions(req.user, transactions);
-      const trends = FinancialInsightsService.getSpendingTrends(transactions);
 
-      res.json({ insights, trends });
+      res.json(insights);
     } catch (error) {
       console.error("Financial insights error:", error);
       res.status(500).json({ message: "Failed to fetch financial insights" });

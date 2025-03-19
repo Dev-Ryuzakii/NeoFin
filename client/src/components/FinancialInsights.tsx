@@ -10,11 +10,15 @@ import { Loader2, TrendingUp, AlertTriangle } from 'lucide-react';
 
 type Insights = {
   insights: {
+    spending: {
+      total: number;
+      byType: Record<string, number>;
+    };
     monthlyLimit: number;
     remainingBudget: number;
     spendingByCategory: Record<string, number>;
   };
-  trends: {
+  trends?: {
     trend: Array<{
       date: string;
       amount: number;
@@ -23,7 +27,7 @@ type Insights = {
 };
 
 export default function FinancialInsights() {
-  const { data: insights, isLoading } = useQuery<Insights>({
+  const { data: insights, isLoading, error } = useQuery<Insights>({
     queryKey: ['/api/insights'],
   });
 
@@ -35,10 +39,26 @@ export default function FinancialInsights() {
     );
   }
 
-  if (!insights) return null;
+  if (error || !insights?.insights) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Financial Insights
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No financial data available yet
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  const { monthlyLimit, remainingBudget, spendingByCategory } = insights.insights;
-  const spentPercentage = ((monthlyLimit - remainingBudget) / monthlyLimit) * 100;
+  const { monthlyLimit = 0, remainingBudget = 0, spendingByCategory = {} } = insights.insights;
+  const spentPercentage = monthlyLimit > 0 ? ((monthlyLimit - remainingBudget) / monthlyLimit) * 100 : 0;
 
   return (
     <Card>
@@ -69,19 +89,21 @@ export default function FinancialInsights() {
             )}
           </div>
 
-          <div>
-            <h4 className="font-medium mb-2">Spending by Category</h4>
-            <div className="space-y-2">
-              {Object.entries(spendingByCategory).map(([category, amount]) => (
-                <div key={category} className="flex justify-between">
-                  <p className="text-sm capitalize">{category.replace('_', ' ')}</p>
-                  <p className="text-sm">₦{amount.toFixed(2)}</p>
-                </div>
-              ))}
+          {Object.keys(spendingByCategory).length > 0 && (
+            <div>
+              <h4 className="font-medium mb-2">Spending by Category</h4>
+              <div className="space-y-2">
+                {Object.entries(spendingByCategory).map(([category, amount]) => (
+                  <div key={category} className="flex justify-between">
+                    <p className="text-sm capitalize">{category.replace('_', ' ')}</p>
+                    <p className="text-sm">₦{amount.toFixed(2)}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {insights.trends && (
+          {insights.trends?.trend && insights.trends.trend.length > 0 && (
             <div>
               <h4 className="font-medium mb-2">Recent Spending Trend</h4>
               <div className="space-y-2">

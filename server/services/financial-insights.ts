@@ -31,12 +31,15 @@ export class FinancialInsightsService {
 
     console.log(`Financial analysis completed for user ${user.id}`);
     return {
-      spending,
       insights: {
+        spending,
         monthlyLimit,
         remainingBudget: monthlyLimit - spending.total,
         spendingByCategory: spending.byType,
       },
+      trends: {
+        trend: this.getSpendingTrends(transactions).trend
+      }
     };
   }
 
@@ -50,7 +53,6 @@ export class FinancialInsightsService {
     }, {} as Record<string, number>);
 
     return {
-      dailySpending,
       trend: Object.entries(dailySpending).map(([date, amount]) => ({
         date,
         amount,
