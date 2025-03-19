@@ -1,6 +1,5 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertTransactionSchema } from "@shared/schema";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
@@ -79,6 +79,10 @@ export default function TransferForm() {
               <FormControl>
                 <Input placeholder="Enter recipient ID" {...field} />
               </FormControl>
+              <FormDescription>
+                Ask the recipient to share their ID from their dashboard.
+                You can find your own ID displayed above to share with others.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -95,6 +99,9 @@ export default function TransferForm() {
                   {...field}
                 />
               </FormControl>
+              <FormDescription>
+                Enter the amount you want to send. Your available balance is shown above.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
