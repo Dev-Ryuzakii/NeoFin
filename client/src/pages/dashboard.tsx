@@ -5,13 +5,15 @@ import TransferForm from "@/components/TransferForm";
 import BillPaymentForm from "@/components/BillPaymentForm";
 import AirtimePurchaseForm from "@/components/AirtimePurchaseForm";
 import KycVerificationForm from "@/components/KycVerificationForm";
+import VirtualCardManager from "@/components/VirtualCardManager";
+import ExternalTransferForm from "@/components/ExternalTransferForm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Building2, LogOut, Shield } from "lucide-react";
+import { Building2, LogOut, Shield, CreditCard } from "lucide-react";
 import { useLocation } from "wouter";
-import NotificationCenter from "@/components/NotificationCenter"; //Import the new component
-import FinancialInsights from "@/components/FinancialInsights"; //Import the new component
+import NotificationCenter from "@/components/NotificationCenter";
+import FinancialInsights from "@/components/FinancialInsights";
 
 export default function Dashboard() {
   const { user, logoutMutation } = useAuth();
@@ -34,9 +36,10 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              Welcome, {user?.fullName}
-            </span>
+            <div className="text-sm text-muted-foreground text-right">
+              <p>Welcome, {user?.fullName}</p>
+              <p className="font-mono">Acc: {user?.accountNumber}</p>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -72,12 +75,14 @@ export default function Dashboard() {
           <div className="space-y-6">
             <AccountSummary user={user!} />
             <NotificationCenter />
+            <VirtualCardManager />
 
             <Card>
               <CardContent className="p-6">
                 <Tabs defaultValue="transfer">
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="transfer">Send Money</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-5">
+                    <TabsTrigger value="transfer">Internal Transfer</TabsTrigger>
+                    <TabsTrigger value="external">External Transfer</TabsTrigger>
                     <TabsTrigger value="bills">Pay Bills</TabsTrigger>
                     <TabsTrigger value="airtime">Buy Airtime</TabsTrigger>
                     <TabsTrigger value="history">History</TabsTrigger>
@@ -85,6 +90,16 @@ export default function Dashboard() {
 
                   <TabsContent value="transfer">
                     <TransferForm />
+                  </TabsContent>
+
+                  <TabsContent value="external">
+                    {user?.kycVerified ? (
+                      <ExternalTransferForm />
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        Complete KYC verification to access external transfers
+                      </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="bills">
@@ -125,6 +140,10 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm text-muted-foreground">Account Type</p>
                     <p className="font-medium capitalize">{user?.role}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Account Number</p>
+                    <p className="font-medium font-mono">{user?.accountNumber}</p>
                   </div>
                 </div>
               </CardContent>

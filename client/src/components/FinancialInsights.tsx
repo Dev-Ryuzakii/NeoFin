@@ -75,10 +75,10 @@ export default function FinancialInsights() {
             <Progress value={spentPercentage} className="h-2" />
             <div className="flex justify-between mt-2">
               <p className="text-sm text-muted-foreground">
-                ₦{remainingBudget.toFixed(2)} remaining
+                ₦{remainingBudget.toLocaleString('en-NG', { minimumFractionDigits: 2 })} remaining
               </p>
               <p className="text-sm text-muted-foreground">
-                ₦{monthlyLimit.toFixed(2)} limit
+                ₦{monthlyLimit.toLocaleString('en-NG', { minimumFractionDigits: 2 })} limit
               </p>
             </div>
             {spentPercentage > 70 && (
@@ -96,7 +96,7 @@ export default function FinancialInsights() {
                 {Object.entries(spendingByCategory).map(([category, amount]) => (
                   <div key={category} className="flex justify-between">
                     <p className="text-sm capitalize">{category.replace('_', ' ')}</p>
-                    <p className="text-sm">₦{amount.toFixed(2)}</p>
+                    <p className="text-sm">₦{amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
                   </div>
                 ))}
               </div>
@@ -112,7 +112,7 @@ export default function FinancialInsights() {
                     <p className="text-sm">
                       {new Date(day.date).toLocaleDateString()}
                     </p>
-                    <p className="text-sm">₦{day.amount.toFixed(2)}</p>
+                    <p className="text-sm">₦{day.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
                   </div>
                 ))}
               </div>
