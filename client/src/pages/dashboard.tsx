@@ -2,6 +2,8 @@ import { useAuth } from "@/hooks/use-auth";
 import AccountSummary from "@/components/AccountSummary";
 import TransactionList from "@/components/TransactionList";
 import TransferForm from "@/components/TransferForm";
+import BillPaymentForm from "@/components/BillPaymentForm";
+import AirtimePurchaseForm from "@/components/AirtimePurchaseForm";
 import KycVerificationForm from "@/components/KycVerificationForm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -71,13 +73,31 @@ export default function Dashboard() {
             <Card>
               <CardContent className="p-6">
                 <Tabs defaultValue="transfer">
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="transfer">Send Money</TabsTrigger>
-                    <TabsTrigger value="history">Transaction History</TabsTrigger>
+                    <TabsTrigger value="bills">Pay Bills</TabsTrigger>
+                    <TabsTrigger value="airtime">Buy Airtime</TabsTrigger>
+                    <TabsTrigger value="history">History</TabsTrigger>
                   </TabsList>
+
                   <TabsContent value="transfer">
                     <TransferForm />
                   </TabsContent>
+
+                  <TabsContent value="bills">
+                    {user?.kycVerified ? (
+                      <BillPaymentForm />
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        Complete KYC verification to access bill payments
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="airtime">
+                    <AirtimePurchaseForm />
+                  </TabsContent>
+
                   <TabsContent value="history">
                     <TransactionList userId={user!.id} />
                   </TabsContent>
