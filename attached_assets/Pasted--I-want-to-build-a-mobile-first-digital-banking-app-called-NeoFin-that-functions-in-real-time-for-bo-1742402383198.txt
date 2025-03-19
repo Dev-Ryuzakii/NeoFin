@@ -1,0 +1,63 @@
+"I want to build a mobile-first digital banking app called NeoFin that functions in real-time for both users and admins. The app should have two interfaces:
+
+User App (Mobile)
+
+Features:
+
+User onboarding with KYC (document upload, OCR verification).
+
+Account management (balance, transaction history, statements).
+
+P2P payments, bill payments, airtime purchase.
+
+Virtual debit card generation (using APIs like Stripe Issuing).
+
+Real-time notifications for transactions (success/failure).
+
+AI-driven fraud detection to flag suspicious transactions.
+
+Personalized financial insights (e.g., spending trends, budget alerts).
+
+Admin Dashboard (Web)
+
+Features:
+
+Real-time monitoring of all user activities (transactions, logins, etc.).
+
+Ability to resolve failed transactions manually.
+
+Fraud alert management (view flagged transactions, approve/block).
+
+Manual KYC approval/rejection.
+
+Analytics dashboard (e.g., total users, transaction volume, revenue).
+
+Technical Requirements:
+
+The app should be real-time (e.g., using WebSockets or server-sent events).
+
+Use React Native for the mobile app and React.js for the admin dashboard.
+
+Backend: Node.js or Python/Django with REST APIs.
+
+Database: PostgreSQL for structured data and Redis for real-time caching.
+
+AI/ML: Integrate a fraud detection model (e.g., Random Forest or LSTM) using Python (Scikit-learn/TensorFlow).
+
+Cloud: Deploy on AWS or Azure using Docker/Kubernetes for scalability.
+
+APIs: Use Stripe for payments, Plaid for bank linking, and Twilio for SMS notifications.
+
+Deliverables:
+
+A detailed system architecture diagram.
+
+Step-by-step implementation plan (frontend, backend, ML, deployment).
+
+Code snippets for key features (e.g., real-time notifications, fraud detection).
+
+Recommendations for testing (e.g., load testing for 1k transactions/sec).
+
+Please provide a clear roadmap and technical guidance to build this project from scratch."
+
+This prompt is detailed and structured, ensuring the AI understands the scope, requirements, and deliverables for both the user-facing mobile app and the admin dashboard. It also emphasizes real-time functionality, which is critical for fintech applications.
