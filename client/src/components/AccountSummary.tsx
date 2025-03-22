@@ -31,7 +31,7 @@ export default function AccountSummary({ user }: AccountSummaryProps) {
           </div>
           <div className="flex-1">
             <p className="text-3xl font-bold">
-              ${parseFloat(user.balance).toFixed(2)}
+               ₦{parseFloat(user.balance).toFixed(2)}
             </p>
             <p className="text-sm text-muted-foreground">Available Balance</p>
           </div>

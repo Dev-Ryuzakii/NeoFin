@@ -61,7 +61,7 @@ export default function TransactionList({ userId, isAdmin }: TransactionListProp
                 transaction.fromUserId === userId ? "text-red-500" : "text-green-500"
               }
             >
-              {transaction.fromUserId === userId ? "-" : "+"}$
+              {transaction.fromUserId === userId ? "-" : "+"} ₦
               {parseFloat(transaction.amount.toString()).toFixed(2)}
             </TableCell>
             {isAdmin && (

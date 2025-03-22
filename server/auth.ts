@@ -21,11 +21,11 @@ async function hashPassword(password: string) {
   return `${buf.toString("hex")}.${salt}`;
 }
 
-async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+async function comparePasswords(provided: string, stored: string) {
+  const [hash, salt] = stored.split(".");
+  const hashBuffer = Buffer.from(hash, "hex");
+  const providedBuffer = (await scryptAsync(provided, salt, 64)) as Buffer;
+  return timingSafeEqual(hashBuffer, providedBuffer);
 }
 
 export function setupAuth(app: Express) {
@@ -43,40 +43,74 @@ export function setupAuth(app: Express) {
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
-      const user = await storage.getUserByUsername(username);
-      if (!user || !(await comparePasswords(password, user.password))) {
-        return done(null, false);
-      } else {
-        return done(null, user);
+      try {
+        const user = await storage.getUserByUsername(username);
+        if (!user || !(await comparePasswords(password, user.password))) {
+          return done(null, false);
+        } else {
+          return done(null, user);
+        }
+      } catch (error) {
+        return done(error);
       }
     }),
   );
 
-  passport.serializeUser((user, done) => done(null, user.id));
-  passport.deserializeUser(async (id: number, done) => {
-    const user = await storage.getUser(id);
-    done(null, user);
+  passport.serializeUser((user, done) => done(null, user.accountNumber));
+  passport.deserializeUser(async (accountNumber: string, done) => {
+    try {
+      const user = await storage.getUser(accountNumber);
+      done(null, user);
+    } catch (error) {
+      done(error);
+    }
   });
 
   app.post("/api/register", async (req, res, next) => {
-    const existingUser = await storage.getUserByUsername(req.body.username);
-    if (existingUser) {
-      return res.status(400).send("Username already exists");
+    try {
+      const existingUser = await storage.getUserByUsername(req.body.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const user = await storage.createUser({
+        username: req.body.username,
+        password: await hashPassword(req.body.password),
+        fullName: req.body.fullName,
+        email: req.body.email,
+        phone: req.body.phone,
+      });
+
+      req.login(user, (err) => {
+        if (err) return next(err);
+        res.status(201).json({
+          accountNumber: user.accountNumber,
+          username: user.username,
+          fullName: user.fullName,
+          role: user.role,
+          balance: user.balance,
+          kycVerified: user.kycVerified,
+          email: user.email,
+          phone: user.phone,
+        });
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Registration failed" });
     }
-
-    const user = await storage.createUser({
-      ...req.body,
-      password: await hashPassword(req.body.password),
-    });
-
-    req.login(user, (err) => {
-      if (err) return next(err);
-      res.status(201).json(user);
-    });
   });
 
   app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    res.status(200).json(req.user);
+    res.status(200).json({
+      accountNumber: req.user.accountNumber,
+      username: req.user.username,
+      fullName: req.user.fullName,
+      role: req.user.role,
+      balance: req.user.balance,
+      kycVerified: req.user.kycVerified,
+      email: req.user.email,
+      phone: req.user.phone,
+    });
   });
 
   app.post("/api/logout", (req, res, next) => {
@@ -88,6 +122,15 @@ export function setupAuth(app: Express) {
 
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    res.json(req.user);
+    res.json({
+      accountNumber: req.user.accountNumber,
+      username: req.user.username,
+      fullName: req.user.fullName,
+      role: req.user.role,
+      balance: req.user.balance,
+      kycVerified: req.user.kycVerified,
+      email: req.user.email,
+      phone: req.user.phone,
+    });
   });
 }

@@ -1,3 +1,14 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+console.log('Current working directory:', process.cwd());
+console.log('Loading .env file...');
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+console.log('Environment variables loaded:', process.env.PAYSTACK_SECRET_KEY ? 'Secret key found' : 'Secret key missing');
+
 import Paystack from "@paystack/paystack-sdk";
 
 if (!process.env.PAYSTACK_SECRET_KEY) {

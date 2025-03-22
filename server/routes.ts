@@ -33,7 +33,7 @@ const upload = multer({
 });
 
 const transferSchema = z.object({
-  toUserId: z.number(),
+  recipientAccountNumber: z.string().min(10, "Account number must be at least 10 digits"),
   amount: z.number().positive(),
 });
 
@@ -74,25 +74,25 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
-      console.log(`Processing transfer request from user ${req.user.id}`);
-      const { toUserId, amount } = transferSchema.parse(req.body);
+      console.log(`Processing transfer request from user ${req.user.accountNumber}`);
+      const { recipientAccountNumber, amount } = transferSchema.parse(req.body);
 
-      const toUser = await storage.getUser(toUserId);
-      if (!toUser) {
-        return res.status(400).json({ message: "Recipient not found" });
+      const recipient = await storage.getUser(recipientAccountNumber);
+      if (!recipient) {
+        return res.status(400).json({ message: "Recipient account not found" });
       }
 
-      if (toUserId === req.user.id) {
+      if (recipient.accountNumber === req.user.accountNumber) {
         return res.status(400).json({ message: "Cannot transfer to yourself" });
       }
 
       // Create transaction and update balances
-      await storage.updateUserBalance(req.user.id, -amount);
-      await storage.updateUserBalance(toUserId, amount);
+      await storage.updateUserBalance(req.user.accountNumber, -amount);
+      await storage.updateUserBalance(recipient.accountNumber, amount);
 
       const transaction = await storage.createTransaction({
-        fromUserId: req.user.id,
-        toUserId,
+        fromAccountNumber: req.user.accountNumber,
+        toAccountNumber: recipient.accountNumber,
         amount: amount.toString(),
         type: "transfer",
         status: "completed"
@@ -105,7 +105,7 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
         console.log(`Suspicious activity detected for transaction ${transaction.id}`);
         // Still allow transaction but notify user and admins
         const ws = getWebSocketService();
-        ws.sendNotification(req.user.id, {
+        ws.sendNotification(req.user.accountNumber, {
           type: 'fraud_alert',
           title: 'Suspicious Transaction Detected',
           message: `Your recent transfer of ${amount} NGN has triggered our fraud detection system.`,
@@ -113,20 +113,24 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
       }
 
       // Send transaction notification to recipient
-      console.log(`Sending notification to recipient ${toUserId}`);
+      console.log(`Sending notification to recipient ${recipient.accountNumber}`);
       const ws = getWebSocketService();
-      ws.sendNotification(toUserId, {
+      ws.sendNotification(recipient.accountNumber, {
         type: 'transaction',
         title: 'Money Received',
         message: `You received ${amount} NGN from ${req.user.fullName}`,
       });
 
       // Update financial insights
-      console.log(`Updating financial insights for user ${req.user.id}`);
-      const transactions = await storage.getTransactions(req.user.id);
+      console.log(`Updating financial insights for user ${req.user.accountNumber}`);
+      const transactions = await storage.getTransactions(req.user.accountNumber);
       await FinancialInsightsService.analyzeTransactions(req.user, transactions);
 
-      res.json(transaction);
+      res.json({
+        ...transaction,
+        recipientName: recipient.fullName,
+        recipientAccountNumber: recipient.accountNumber
+      });
     } catch (error) {
       console.error("Transfer error:", error);
       if (error instanceof ZodError) {
@@ -495,6 +499,50 @@ export async function registerRoutes(app: Express, server: Server): Promise<void
     }
   });
 
+  // Add account verification endpoint
+  app.get("/api/verify-account/:accountNumber", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      console.log("Unauthorized verification attempt");
+      return res.status(401).json({ message: "Please log in to verify accounts" });
+    }
+
+    try {
+      const { accountNumber } = req.params;
+      console.log("Verifying account number:", accountNumber);
+      
+      // Validate account number format
+      if (!accountNumber.match(/^035\d{7}$/)) {
+        console.log("Invalid account number format:", accountNumber);
+        return res.status(400).json({ 
+          message: "Invalid account number format. Must be 10 digits starting with 035" 
+        });
+      }
+
+      const recipient = await storage.getUser(accountNumber);
+      console.log("Recipient found:", recipient ? "Yes" : "No");
+      
+      if (!recipient) {
+        console.log("Account not found in storage");
+        return res.status(404).json({ 
+          message: "Account not found. Please check the account number and try again" 
+        });
+      }
+
+      // Only return necessary information
+      const response = {
+        fullName: recipient.fullName,
+        accountNumber: recipient.accountNumber
+      };
+      console.log("Sending response:", response);
+      
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Account verification error:", error);
+      res.status(500).json({ 
+        message: "Failed to verify account. Please try again later" 
+      });
+    }
+  });
 
   console.log("All routes registered successfully");
 }

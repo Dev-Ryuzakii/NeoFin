@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  accountNumber: text("account_number").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   fullName: text("full_name").notNull(),
@@ -12,12 +12,11 @@ export const users = pgTable("users", {
   kycVerified: boolean("kyc_verified").notNull().default(false),
   email: text("email"),
   phone: text("phone"),
-  accountNumber: text("account_number").unique(), // Added for bank account numbers
 });
 
 export const kycDocuments = pgTable("kyc_documents", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  accountNumber: text("account_number").references(() => users.accountNumber),
   documentType: text("document_type").notNull(), // passport, driver_license, national_id
   documentNumber: text("document_number").notNull(),
   documentImage: text("document_image").notNull(), // Base64 encoded image
@@ -29,7 +28,7 @@ export const kycDocuments = pgTable("kyc_documents", {
 
 export const virtualCards = pgTable("virtual_cards", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  accountNumber: text("account_number").references(() => users.accountNumber),
   cardNumber: text("card_number").notNull().unique(),
   expiryMonth: text("expiry_month").notNull(),
   expiryYear: text("expiry_year").notNull(),
@@ -47,7 +46,7 @@ export const externalBanks = pgTable("external_banks", {
 
 export const externalTransfers = pgTable("external_transfers", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  accountNumber: text("account_number").references(() => users.accountNumber),
   bankId: integer("bank_id").references(() => externalBanks.id),
   recipientName: text("recipient_name").notNull(),
   recipientAccount: text("recipient_account").notNull(),
@@ -59,8 +58,8 @@ export const externalTransfers = pgTable("external_transfers", {
 
 export const transactions = pgTable("transactions", {
   id: serial("id").primaryKey(),
-  fromUserId: integer("from_user_id").references(() => users.id),
-  toUserId: integer("to_user_id").references(() => users.id),
+  fromAccountNumber: text("from_account_number").references(() => users.accountNumber),
+  toAccountNumber: text("to_account_number").references(() => users.accountNumber),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   type: text("type").notNull(), // transfer, bill_payment, airtime, deposit, withdrawal, external_transfer
   status: text("status").notNull(), // pending, completed, failed
@@ -71,7 +70,7 @@ export const transactions = pgTable("transactions", {
 
 export const billPayments = pgTable("bill_payments", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  accountNumber: text("account_number").references(() => users.accountNumber),
   transactionId: integer("transaction_id").references(() => transactions.id),
   billType: text("bill_type").notNull(), // electricity, water, cable_tv, internet
   provider: text("provider").notNull(),
@@ -83,7 +82,7 @@ export const billPayments = pgTable("bill_payments", {
 
 export const airtimePurchases = pgTable("airtime_purchases", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  accountNumber: text("account_number").references(() => users.accountNumber),
   transactionId: integer("transaction_id").references(() => transactions.id),
   phoneNumber: text("phone_number").notNull(),
   provider: text("provider").notNull(), // MTN, Airtel, Glo, 9mobile
@@ -114,7 +113,7 @@ export const insertKycDocumentSchema = createInsertSchema(kycDocuments)
   });
 
 export const insertVirtualCardSchema = createInsertSchema(virtualCards).pick({
-  userId: true,
+  accountNumber: true,
 });
 
 export const insertExternalTransferSchema = createInsertSchema(externalTransfers)
@@ -161,7 +160,7 @@ export type AirtimePurchase = typeof airtimePurchases.$inferSelect;
 // Add notification types
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  accountNumber: text("account_number").references(() => users.accountNumber),
   type: text("type").notNull(), // transaction, fraud_alert, budget_alert
   title: text("title").notNull(),
   message: text("message").notNull(),

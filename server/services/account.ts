@@ -10,8 +10,7 @@ export class AccountService {
     return this.BANK_CODE + randomPart;
   }
 
-  static async assignAccountNumber(user: User): Promise<string> {
-    console.log(`Generating account number for user ${user.id}`);
+  static async assignAccountNumber(): Promise<string> {
     // Generate a unique account number
     const accountNumber = this.generateAccountNumber();
     console.log(`Generated account number: ${accountNumber}`);

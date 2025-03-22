@@ -7,50 +7,50 @@ const MemoryStore = createMemoryStore(session);
 
 export interface IStorage {
   // User operations
-  getUser(id: number): Promise<User | undefined>;
+  getUser(accountNumber: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  updateUserBalance(userId: number, amount: number): Promise<User>;
-  updateUser(userId: number, updates: Partial<User>): Promise<User>;
+  updateUserBalance(accountNumber: string, amount: number): Promise<User>;
+  updateUser(accountNumber: string, updates: Partial<User>): Promise<User>;
 
   // Transaction operations
   createTransaction(transaction: Partial<Transaction>): Promise<Transaction>;
-  getTransactions(userId: number): Promise<Transaction[]>;
+  getTransactions(accountNumber: string): Promise<Transaction[]>;
   getAllTransactions(): Promise<Transaction[]>;
   updateTransactionStatus(id: number, status: string): Promise<Transaction>;
 
   // KYC operations
-  createKycDocument(document: InsertKycDocument & { userId: number }): Promise<KycDocument>;
-  getKycDocuments(userId: number): Promise<KycDocument[]>;
+  createKycDocument(document: InsertKycDocument & { accountNumber: string }): Promise<KycDocument>;
+  getKycDocuments(accountNumber: string): Promise<KycDocument[]>;
   getAllPendingKycDocuments(): Promise<KycDocument[]>;
   updateKycDocument(id: number, status: string, reason?: string): Promise<KycDocument>;
 
   // Virtual Card operations
   createVirtualCard(card: Partial<VirtualCard>): Promise<VirtualCard>;
-  getVirtualCards(userId: number): Promise<VirtualCard[]>;
+  getVirtualCards(accountNumber: string): Promise<VirtualCard[]>;
   updateVirtualCardStatus(id: number, status: string): Promise<VirtualCard>;
 
   // External Transfer operations
   createExternalTransfer(transfer: Partial<ExternalTransfer>): Promise<ExternalTransfer>;
-  getExternalTransfers(userId: number): Promise<ExternalTransfer[]>;
+  getExternalTransfers(accountNumber: string): Promise<ExternalTransfer[]>;
   updateExternalTransferStatus(id: number, status: string): Promise<ExternalTransfer>;
   getSupportedBanks(): Promise<ExternalBank[]>;
 
   // Bill Payment operations
-  createBillPayment(payment: InsertBillPayment & { userId: number }): Promise<BillPayment>;
-  getBillPayments(userId: number): Promise<BillPayment[]>;
+  createBillPayment(payment: InsertBillPayment & { accountNumber: string }): Promise<BillPayment>;
+  getBillPayments(accountNumber: string): Promise<BillPayment[]>;
   updateBillPaymentStatus(id: number, status: string): Promise<BillPayment>;
 
   // Airtime Purchase operations
-  createAirtimePurchase(purchase: InsertAirtimePurchase & { userId: number }): Promise<AirtimePurchase>;
-  getAirtimePurchases(userId: number): Promise<AirtimePurchase[]>;
+  createAirtimePurchase(purchase: InsertAirtimePurchase & { accountNumber: string }): Promise<AirtimePurchase>;
+  getAirtimePurchases(accountNumber: string): Promise<AirtimePurchase[]>;
   updateAirtimePurchaseStatus(id: number, status: string): Promise<AirtimePurchase>;
 
   sessionStore: session.Store;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<number, User>;
+  private users: Map<string, User>;
   private transactions: Map<number, Transaction>;
   private kycDocuments: Map<number, KycDocument>;
   private virtualCards: Map<number, VirtualCard>;
@@ -58,7 +58,6 @@ export class MemStorage implements IStorage {
   private billPayments: Map<number, BillPayment>;
   private airtimePurchases: Map<number, AirtimePurchase>;
 
-  currentId: number;
   currentTransactionId: number;
   currentKycDocumentId: number;
   currentVirtualCardId: number;
@@ -76,7 +75,6 @@ export class MemStorage implements IStorage {
     this.billPayments = new Map();
     this.airtimePurchases = new Map();
 
-    this.currentId = 1;
     this.currentTransactionId = 1;
     this.currentKycDocumentId = 1;
     this.currentVirtualCardId = 1;
@@ -89,8 +87,8 @@ export class MemStorage implements IStorage {
     });
   }
 
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+  async getUser(accountNumber: string): Promise<User | undefined> {
+    return this.users.get(accountNumber);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -100,45 +98,42 @@ export class MemStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId++;
-    const accountNumber = await AccountService.assignAccountNumber({ id } as User);
-
+    const accountNumber = await AccountService.assignAccountNumber();
     const user: User = {
-      id,
+      accountNumber,
       ...insertUser,
       role: "user",
       balance: "1000",
       kycVerified: false,
       email: insertUser.email || null,
       phone: insertUser.phone || null,
-      accountNumber,
     };
-    this.users.set(id, user);
+    this.users.set(accountNumber, user);
     return user;
   }
 
-  async updateUser(userId: number, updates: Partial<User>): Promise<User> {
-    const user = await this.getUser(userId);
+  async updateUser(accountNumber: string, updates: Partial<User>): Promise<User> {
+    const user = await this.getUser(accountNumber);
     if (!user) throw new Error("User not found");
 
     const updatedUser = { ...user, ...updates };
-    this.users.set(userId, updatedUser);
+    this.users.set(accountNumber, updatedUser);
     return updatedUser;
   }
 
-  async updateUserBalance(userId: number, amount: number): Promise<User> {
-    const user = await this.getUser(userId);
+  async updateUserBalance(accountNumber: string, amount: number): Promise<User> {
+    const user = await this.getUser(accountNumber);
     if (!user) throw new Error("User not found");
 
     const newBalance = parseFloat(user.balance) + amount;
     if (newBalance < 0) throw new Error("Insufficient funds");
 
     const updatedUser = { ...user, balance: newBalance.toFixed(2) };
-    this.users.set(userId, updatedUser);
+    this.users.set(accountNumber, updatedUser);
     return updatedUser;
   }
 
-  async createKycDocument(document: InsertKycDocument & { userId: number }): Promise<KycDocument> {
+  async createKycDocument(document: InsertKycDocument & { accountNumber: string }): Promise<KycDocument> {
     const id = this.currentKycDocumentId++;
     const newDocument: KycDocument = {
       id,
@@ -152,14 +147,14 @@ export class MemStorage implements IStorage {
     this.kycDocuments.set(id, newDocument);
 
     // Update user's KYC status
-    await this.updateUser(document.userId, { kycVerified: true });
+    await this.updateUser(document.accountNumber, { kycVerified: true });
 
     return newDocument;
   }
 
-  async getKycDocuments(userId: number): Promise<KycDocument[]> {
+  async getKycDocuments(accountNumber: string): Promise<KycDocument[]> {
     return Array.from(this.kycDocuments.values()).filter(
-      (doc) => doc.userId === userId
+      (doc) => doc.accountNumber === accountNumber
     );
   }
 
@@ -183,8 +178,8 @@ export class MemStorage implements IStorage {
     this.kycDocuments.set(id, updatedDocument);
 
     // Update user's KYC status based on document status
-    if (document.userId) {
-      await this.updateUser(document.userId, { 
+    if (document.accountNumber) {
+      await this.updateUser(document.accountNumber, { 
         kycVerified: status === "approved" 
       });
     }
@@ -204,9 +199,9 @@ export class MemStorage implements IStorage {
     return newTransaction;
   }
 
-  async getTransactions(userId: number): Promise<Transaction[]> {
+  async getTransactions(accountNumber: string): Promise<Transaction[]> {
     return Array.from(this.transactions.values()).filter(
-      (t) => t.fromUserId === userId || t.toUserId === userId
+      (t) => t.fromAccountNumber === accountNumber || t.toAccountNumber === accountNumber
     );
   }
 
@@ -234,9 +229,9 @@ export class MemStorage implements IStorage {
     return newCard;
   }
 
-  async getVirtualCards(userId: number): Promise<VirtualCard[]> {
+  async getVirtualCards(accountNumber: string): Promise<VirtualCard[]> {
     return Array.from(this.virtualCards.values()).filter(
-      (card) => card.userId === userId
+      (card) => card.accountNumber === accountNumber
     );
   }
 
@@ -261,9 +256,9 @@ export class MemStorage implements IStorage {
     return newTransfer;
   }
 
-  async getExternalTransfers(userId: number): Promise<ExternalTransfer[]> {
+  async getExternalTransfers(accountNumber: string): Promise<ExternalTransfer[]> {
     return Array.from(this.externalTransfers.values()).filter(
-      (transfer) => transfer.userId === userId
+      (transfer) => transfer.accountNumber === accountNumber
     );
   }
 
@@ -285,7 +280,7 @@ export class MemStorage implements IStorage {
     ];
   }
 
-  async createBillPayment(payment: InsertBillPayment & { userId: number }): Promise<BillPayment> {
+  async createBillPayment(payment: InsertBillPayment & { accountNumber: string }): Promise<BillPayment> {
     const id = this.currentBillPaymentId++;
     const newPayment: BillPayment = {
       id,
@@ -298,9 +293,9 @@ export class MemStorage implements IStorage {
     return newPayment;
   }
 
-  async getBillPayments(userId: number): Promise<BillPayment[]> {
+  async getBillPayments(accountNumber: string): Promise<BillPayment[]> {
     return Array.from(this.billPayments.values()).filter(
-      (payment) => payment.userId === userId
+      (payment) => payment.accountNumber === accountNumber
     );
   }
 
@@ -313,7 +308,7 @@ export class MemStorage implements IStorage {
     return updatedPayment;
   }
 
-  async createAirtimePurchase(purchase: InsertAirtimePurchase & { userId: number }): Promise<AirtimePurchase> {
+  async createAirtimePurchase(purchase: InsertAirtimePurchase & { accountNumber: string }): Promise<AirtimePurchase> {
     const id = this.currentAirtimePurchaseId++;
     const newPurchase: AirtimePurchase = {
       id,
@@ -326,9 +321,9 @@ export class MemStorage implements IStorage {
     return newPurchase;
   }
 
-  async getAirtimePurchases(userId: number): Promise<AirtimePurchase[]> {
+  async getAirtimePurchases(accountNumber: string): Promise<AirtimePurchase[]> {
     return Array.from(this.airtimePurchases.values()).filter(
-      (purchase) => purchase.userId === userId
+      (purchase) => purchase.accountNumber === accountNumber
     );
   }
 

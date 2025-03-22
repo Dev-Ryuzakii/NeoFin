@@ -3,7 +3,9 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializeWebSocket } from './services/websocket';
 import {createServer} from 'http';
+import dotenv from 'dotenv';
 
+dotenv.config();
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -69,13 +71,9 @@ app.use((req, res, next) => {
 
     // ALWAYS serve on port 5000
     const port = 5000;
-    server.listen({
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    }, () => {
+    server.listen(port, '127.0.0.1', () => {
       log(`Server running on port ${port}`);
-      log(`Health check available at http://0.0.0.0:${port}/health`);
+      log(`Health check available at http://127.0.0.1:${port}`);
     });
 
     // Handle server errors
