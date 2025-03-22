@@ -1,6 +1,6 @@
 # NeoFin - Mobile-First Digital Banking Platform
 
-![NeoFin Logo](https://via.placeholder.com/150) <!-- Replace with your logo -->
+<!--![NeoFin Logo](https://via.placeholder.com/150)  Replace with your logo -->
 
 NeoFin is a **mobile-first digital banking platform** that provides users with a seamless banking experience while offering admins real-time monitoring and control. The platform includes a **user-facing mobile app** and an **admin dashboard** for managing transactions, fraud detection, and user activity.
 
