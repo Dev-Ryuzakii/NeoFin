@@ -80,6 +80,5 @@ NeoFin is a **mobile-first digital banking platform** that provides users with a
 
 ### **Steps**  
 1. Clone the repository:  
-   ```bash
-[ git clone https://github.com/Dev-Ryuzakii/NeoFin.git]
-   cd neofin
+    git clone https://github.com/Dev-Ryuzakii/NeoFin.git
+   cd NeoFin
